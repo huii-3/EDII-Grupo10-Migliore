@@ -3,33 +3,33 @@
 ;
 ; @authors     Gallardo_Lucas Uriel
 ;	       Pessolano Dellamea_Ornella Valentina
-;	       Garc�a Navarro_Huilen
-;              Fern�ndez_Mar�a Clara
+;	       García Navarro_Huilen
+;              Fernández_María Clara
 ;
-; @date       dia/mes/a�o
+; @date       dia/mes/año
 ;
 ; @version    1.0
 ;===============================================================================
 
 ;===============================================================================
-; DIRECTIVAS DE INCLUSI�N
+; DIRECTIVAS DE INCLUSIÓN
 ;===============================================================================
     LIST P=16F887
     #include "p16f887.inc"	
 	
 ;===============================================================================
-; CONFIGURACI�N GENERAL DEL MCU
+; CONFIGURACIÓN GENERAL DEL MCU
 ;=============================================================================== 	
     __CONFIG _CONFIG1, _XT_OSC & _WDTE_OFF & _MCLRE_ON & _LVP_OFF
 
 ;===============================================================================
-; DEFINICI�N DE CONSTANTES
+; DEFINICIÓN DE CONSTANTES
 ;===============================================================================
     #DEFINE CTRL_DSPL_1 PORTC,RC0
     #DEFINE CTRL_DSPL_2 PORTC,RC1
     #DEFINE CTRL_DSPL_3 PORTC,RC2
 ;===============================================================================
-; DEFINICI�N DE VARIABLES
+; DEFINICIÓN DE VARIABLES
 ;===============================================================================
     CBLOCK 0X20
         DELAY1_Init
@@ -47,7 +47,7 @@
     ENDC
 
 ;===============================================================================
-; DECLARACI�N DE MACROS PARA CONFIGURACI�N DE REGISTROS
+; DECLARACIÓN DE MACROS PARA CONFIGURACIÓN DE REGISTROS
 ;===============================================================================
 
 CFG_DSPL MACRO
@@ -104,17 +104,17 @@ CFG_DELAY_1s MACRO
     ENDM
 
 ;===============================================================================
-; INICIALIZACI�N DEL MCU (C�DIGO ABSOLUTO)
+; INICIALIZACIÓN DEL MCU (CÓDIGO ABSOLUTO)
 ;===============================================================================    
     ORG     0x00	;Vector de Reset
     GOTO    INICIO	;Salto al inicio del programa principal
-    ORG     0x05	;Ubicaci�n Programa Principal en la memoria 
+    ORG     0x05	;Ubicación Programa Principal en la memoria 
 			;de programa
 		
 ;===============================================================================
-; INICIALIZACI�N DE MACROS PARA CONFIGURACI�N DE REGISTROS
+; INICIALIZACIÓN DE MACROS PARA CONFIGURACIÓN DE REGISTROS
 ;===============================================================================    	    
-INICIO	    ;-----Inicializaci�n de Macros-------
+INICIO	    ;-----Inicialización de Macros-------
     CFG_DSPL
     CFG_DELAY_2ms5
 		
@@ -172,6 +172,19 @@ DECF_COUNTER_DSPL
     SUBWF    COUNTER_DSPL
     RETURN
 
+;*******************************************************************************
+;TABLA DISPLAY CÁTODO COMUN									
+;Segmento	dp	g 	f	e	d	c	b	a	HEX
+;   a	    0	0	0	0	0	0	0	1	0x01
+;   b	    0	0	0	0	0	0	1	0	0x02
+;   c	    0	0	0	0	0	1	0	0	0x04
+;   d	    0	0	0	0	1	0	0	0	0x08
+;   e 	    0 	0	0	1	0	0	0	0	0x10
+;   f	    0	0	1	0	0	0	0	0	0x20
+;   g    	0	1	0	0	0	0	0	0	0x40
+;           
+;
+;*******************************************************************************
 
 
 
