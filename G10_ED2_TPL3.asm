@@ -204,6 +204,7 @@ RETLW B'01000000' ;índice 6 -> segmento g
 
 TABLE_CTRL_DSPL_CC 
 ADDWF PCL,F 
+RETLW B'00000000' ;índice 0, no se usa (COUNTER_DSPL nunca vale 0)
 RETLW B'00000001' ;COUNTER_DSPL=1 -> RC0 (display 1) 
 RETLW B'00000010' ;COUNTER_DSPL=2 -> RC1 (display 2) 
 RETLW B'00000100' ;COUNTER_DSPL=3 -> RC2 (display 3) 
