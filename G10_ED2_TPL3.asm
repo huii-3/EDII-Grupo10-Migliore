@@ -117,13 +117,17 @@ CFG_DELAY_1s MACRO
 INICIO	    ;-----Inicialización de Macros-------
     CFG_DSPL
     CFG_DELAY_2ms5
+
+    CALL TEST_DSPL
+
+    CFG_DIGITS_DSPL
 		
 ;===============================================================================
 ; INICIO PROGRAMA PRINCIPAL
 ;===============================================================================						
 MAIN_LOOP
     
-    GOTO   MAIN_LOOP
+    GOTO   MUX_DSPL
 	
 ;===============================================================================
 ; SUBRUTINAS
