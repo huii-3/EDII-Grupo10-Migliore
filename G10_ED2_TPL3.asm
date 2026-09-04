@@ -185,6 +185,15 @@ DECF_COUNTER_DSPL
 ;           
 ;
 ;*******************************************************************************
+TABLE_TEST_SEGMENTS 
+ADDWF PCL,F 
+RETLW B'00000001' ;índice 0 -> segmento a 
+RETLW B'00000010' ;índice 1 -> segmento b 
+RETLW B'00000100' ;índice 2 -> segmento c 
+RETLW B'00001000' ;índice 3 -> segmento d 
+RETLW B'00010000' ;índice 4 -> segmento e 
+RETLW B'00100000' ;índice 5 -> segmento f 
+RETLW B'01000000' ;índice 6 -> segmento g 
 
 ;*******************************************************************************
 ;TABLA DE CONTROL			
@@ -193,6 +202,11 @@ DECF_COUNTER_DSPL
 ;RC2	1	0	0
 ;*******************************************************************************
 
+TABLE_CTRL_DSPL_CC 
+ADDWF PCL,F 
+RETLW B'00000001' ;COUNTER_DSPL=1 -> RC0 (display 1) 
+RETLW B'00000010' ;COUNTER_DSPL=2 -> RC1 (display 2) 
+RETLW B'00000100' ;COUNTER_DSPL=3 -> RC2 (display 3) 
 
 
 
