@@ -2,8 +2,8 @@
 
 
 Integrantes:
-Fernández María Clara
-Gallardo Lucas Uriel
-García Navarro Huilen  
-Pessolano Dellamea Ornella Valentina
+Fernández María Clara  
+Gallardo Lucas Uriel  
+García Navarro Huilen   
+Pessolano Dellamea Ornella Valentina  
 
