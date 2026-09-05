@@ -1,7 +1,7 @@
 # EDII-Grupo10-Migliore
 
 
-Integrantes:
+Integrantes:  
 Fernández María Clara  
 Gallardo Lucas Uriel  
 García Navarro Huilen   
