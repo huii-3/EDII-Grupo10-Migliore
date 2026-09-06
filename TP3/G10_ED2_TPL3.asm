@@ -57,9 +57,15 @@ CFG_DSPL MACRO
     BCF    TRISC,TRISC1
     BCF    TRISC,TRISC2
     BCF    STATUS,RP0       ;Banco 0
-    BCF    PORTC,RC0
-    BCF    PORTC,RC1
-    BCF    PORTC,RC2
+    BCF    CTRL_DSPL_1      ;Pines RC0, RC1 y RC2 comienzan en bajo
+    BCF    CTRL_DSPL_2
+    BCF    CTRL_DSPL_3
+    MOVLW  D'1'             ;Asigno el valor de indice para saber que valor
+    MOVWF  DATA_DSPL_1      ;tendrá cada display dependiendo de la tabla
+    MOVLW  D'2'
+    MOVWF  DATA_DSPL_2
+    MOVLW  D'3'
+    MOVWF  DATA_DSPL_3
     ENDM
 
 CFG_DIGITS_DSPL MACRO
@@ -74,6 +80,18 @@ DSPL_ALL_OFF MACRO
     BCF    STATUS,RP0
     BCF    STATUS,RP1       ;Banco 0
     CLRF   PORTD
+    ENDM
+
+DSPL_ALL_ON MACRO
+    BCF    STATUS,RP0
+    BCF    STATUS,RP1       ;Banco 0
+    BSF    PORTD,RD0        ;Todo el puerto D en alto
+    BSF    PORTD,RD1
+    BSF    PORTD,RD2
+    BSF    PORTD,RD3
+    BSF    PORTD,RD4
+    BSF    PORTD,RD5
+    BSF    PORTD,RD6
     ENDM
 
 CFG_DELAY_2ms5 MACRO
@@ -103,6 +121,15 @@ CFG_DELAY_1s MACRO
     MOVWF  DELAY3_Init
     ENDM
 
+CFG_DELAY_2s MACRO
+    MOVLW  D'31'
+    MOVWF  DELAY1_Init
+    MOVLW  D'144'
+    MOVWF  DELAY2_Init
+    MOVLW  D'148'
+    MOVWF  DELAY3_Init
+    ENDM
+
 ;===============================================================================
 ; INICIALIZACIÓN DEL MCU (CÓDIGO ABSOLUTO)
 ;===============================================================================    
@@ -116,18 +143,17 @@ CFG_DELAY_1s MACRO
 ;===============================================================================    	    
 INICIO	    ;-----Inicialización de Macros-------
     CFG_DSPL
-    CFG_DELAY_2ms5
-
-    CALL TEST_DSPL
-
     CFG_DIGITS_DSPL
 		
 ;===============================================================================
 ; INICIO PROGRAMA PRINCIPAL
 ;===============================================================================						
+
+    CALL   TEST_DSPL
+    CFG_DELAY_2ms5
 MAIN_LOOP
-    
-    GOTO   MUX_DSPL
+    CALL   MUX_DSPL
+    GOTO   MAIN_LOOP
 	
 ;===============================================================================
 ; SUBRUTINAS
@@ -172,8 +198,7 @@ RST_COUNTER_DSPL
 ; @details  Decrementa el contador en 1
 ;*******************************************************************************
 DECF_COUNTER_DSPL
-    MOVLW    D'1'
-    SUBWF    COUNTER_DSPL,F
+    DECF    COUNTER_DSPL,F
     RETURN
 
 ;*******************************************************************************
@@ -214,84 +239,107 @@ RETLW B'00000010' ;COUNTER_DSPL=2 -> RC1 (display 2)
 RETLW B'00000100' ;COUNTER_DSPL=3 -> RC2 (display 3) 
 
 
-
+;*******************************************************************************
+; @brief    Subrutina de testeo de los display
+;           
+; @details  Enciende los segmenttos de los display uno a uno, desde a hasta g,
+;           luego prende y apaga todos los segmentos del display
+;*******************************************************************************
 TEST_DSPL
-    RST_COUNTER_DSPL
-LOOP_TEST_DSPL
-    MOVF   COUNTER_DSPL
-    TABLE_CTRL_DSPL
+                    CALL   RST_COUNTER_DSPL
+LOOP_TEST_DSPL      MOVF   COUNTER_DSPL,W
+                    CALL   TABLE_CTRL_DSPL_CC
+		    MOVWF  PORTC
+		    BCF    STATUS,RP0
+		    BCF    STATUS,RP1
+		    BSF    STATUS,C
+		    DSPL_ALL_OFF
+		    CFG_DELAY_300ms
+		    MOVLW   D'7'
+		    MOVWF  COUNTER_SEGMENTS
+LOOP_TEST_SEGMENT   RLF    PORTD,F
+                    CALL   DELAY_3LOOP
+		    DECFSZ COUNTER_SEGMENTS,F
+		    GOTO   LOOP_TEST_SEGMENT
+		    DSPL_ALL_ON
+		    CFG_DELAY_2s
+		    CALL   DELAY_3LOOP
+		    DSPL_ALL_OFF
+		    CALL   DELAY_3LOOP
+		    DECFSZ COUNTER_DSPL,F
+		    GOTO   LOOP_TEST_DSPL
+                    CALL   RST_COUNTER_DSPL
+		    RETURN
 
+;*******************************************************************************
+; @brief    Actualización de display 1
+;           
+; @details  Actualiza el caracter mostrado en el display 1
+;*******************************************************************************
+UPDATE_DSPL_1
+    MOVF   DATA_DSPL_1,W
+    CALL   TABLE_DECO_DSPL_CC
+    MOVWF  PORTD
+    MOVF   COUNTER_DSPL,W
+    CALL   TABLE_CTRL_DSPL_CC
+    MOVWF  PORTC
+    CALL   DECF_COUNTER_DSPL
+    RETURN
 
-
-MUX_DSPL	
-CALL   DELAY_3LOOP	
-	
-MOVLW  D'3'	
-SUBWF  COUNTER_DSPL,W	
-BTFSC  STATUS,Z	
-GOTO   UPDATE_DSPL_3	
-	
-MOVLW  D'2'	
-SUBWF  COUNTER_DSPL,W	
-BTFSC  STATUS,Z	
-GOTO   UPDATE_DSPL_2	
-	
-MOVLW  D'1'	
-SUBWF  COUNTER_DSPL,W	
-BTFSC  STATUS,Z	
-GOTO   UPDATE_DSPL_1	
-	
-CALL   RST_COUNTER_DSPL	
-GOTO   MUX_DSPL	
-
-
-UPDATE_DSPL_1 
-; BCF CTRL_DSPL_1 	; BCF PORTC,RC0
-; BCF CTRL_DSPL_2 	; BCF PORTC,RC1
-; BCF CTRL_DSPL_3 	; BCF PORTC,RC2
-
-MOVF DATA_DSPL_1,W 
-CALL TABLE_DECO_DSPL_CC 
-MOVWF PORTD 
-
-MOVF COUNTER_DSPL,W 
-CALL TABLE_CTRL_DSPL_CC 
-MOVWF PORTC 
-
-CALL DECF_COUNTER_DSPL
-GOTO MUX_DSPL 
-
-
+;*******************************************************************************
+; @brief    Actualización de display 2
+;           
+; @details  Actualiza el caracter mostrado en el display 2
+;*******************************************************************************
 UPDATE_DSPL_2
-; BCF CTRL_DSPL_1 	; BCF PORTC,RC0
-; BCF CTRL_DSPL_2 	; BCF PORTC,RC1
-; BCF CTRL_DSPL_3 	; BCF PORTC,RC2
+    MOVF   DATA_DSPL_2,W
+    CALL   TABLE_DECO_DSPL_CC
+    MOVWF  PORTD
+    MOVF   COUNTER_DSPL,W
+    CALL   TABLE_CTRL_DSPL_CC
+    MOVWF  PORTC
+    CALL   DECF_COUNTER_DSPL
+    RETURN
 
-MOVF DATA_DSPL_2,W 
-CALL TABLE_DECO_DSPL_CC 
-MOVWF PORTD 
-
-MOVF COUNTER_DSPL,W 
-CALL TABLE_CTRL_DSPL_CC 
-MOVWF PORTC 
-
-CALL DECF_COUNTER_DSPL
-GOTO MUX_DSPL 
-
-
-
+;*******************************************************************************
+; @brief    Actualización de display 3
+;           
+; @details  Actualiza el caracter mostrado en el display 3
+;*******************************************************************************
 UPDATE_DSPL_3
-; BCF CTRL_DSPL_1 	; BCF PORTC,RC0
-; BCF CTRL_DSPL_2 	; BCF PORTC,RC1
-; BCF CTRL_DSPL_3 	; BCF PORTC,RC2
+    MOVF   DATA_DSPL_3,W
+    CALL   TABLE_DECO_DSPL_CC
+    MOVWF  PORTD
+    MOVF   COUNTER_DSPL,W
+    CALL   TABLE_CTRL_DSPL_CC
+    MOVWF  PORTC
+    CALL   DECF_COUNTER_DSPL
+    RETURN
 
-MOVF DATA_DSPL_3,W 
-CALL TABLE_DECO_DSPL_CC 
-MOVWF PORTD 
+;*******************************************************************************
+; @brief    Subrutina de manejo de displays
+;           
+; @details  Multiplexa los displays
+;*******************************************************************************
+MUX_DSPL
+    CALL   DELAY_3LOOP
+    MOVLW  D'3'
+    SUBWF  COUNTER_DSPL,W
+    BTFSC  STATUS,Z
+    GOTO   UPDATE_DSPL_3
+    MOVLW  D'2'	
+    SUBWF  COUNTER_DSPL,W	
+    BTFSC  STATUS,Z
+    GOTO   UPDATE_DSPL_2
+    MOVLW  D'1'
+    SUBWF  COUNTER_DSPL,W
+    BTFSC  STATUS,Z
+    GOTO   UPDATE_DSPL_1
+    CALL   RST_COUNTER_DSPL
+    RETURN
 
-MOVF COUNTER_DSPL,W 
-CALL TABLE_CTRL_DSPL_CC 
-MOVWF PORTC 
-
+;===============================================================================
+    END
+;===============================================================================
 CALL DECF_COUNTER_DSPL
 GOTO MUX_DSPL 
