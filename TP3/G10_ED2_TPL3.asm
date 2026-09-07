@@ -1,12 +1,12 @@
 ;===============================================================================
-; @file       G10_TPL2_ED2.asm
+; @file       G10_TPL3_ED2.asm
 ;
 ; @authors     Gallardo_Lucas Uriel
-;	       Pessolano Dellamea_Ornella Valentina
-;	       García Navarro_Huilen
+;	           Pessolano Dellamea_Ornella Valentina
+;	           García Navarro_Huilen
 ;              Fernández_María Clara
 ;
-; @date       dia/mes/año
+; @date       07/09/2026
 ;
 ; @version    1.0
 ;===============================================================================
@@ -39,11 +39,11 @@
         DELAY2
         DELAY3
         DATA_DSPL_1
-	DATA_DSPL_2
-	DATA_DSPL_3
+	    DATA_DSPL_2
+	    DATA_DSPL_3
         NUM_MAX_DSPL
-	COUNTER_DSPL
-	COUNTER_SEGMENTS
+	    COUNTER_DSPL
+	    COUNTER_SEGMENTS
     ENDC
 
 ;===============================================================================
@@ -53,7 +53,7 @@
 CFG_DSPL MACRO
     BSF    STATUS,RP0
     BCF    STATUS,RP1       ;Banco 1
-    BCF    TRISC,TRISC0
+    BCF    TRISC,TRISC0     ;Pines RC0, RC1 y RC2 como salidas digitales
     BCF    TRISC,TRISC1
     BCF    TRISC,TRISC2
     BCF    STATUS,RP0       ;Banco 0
@@ -79,7 +79,7 @@ CFG_DIGITS_DSPL MACRO
 DSPL_ALL_OFF MACRO
     BCF    STATUS,RP0
     BCF    STATUS,RP1       ;Banco 0
-    CLRF   PORTD
+    CLRF   PORTD            ;Todo el puerto D en bajo
     ENDM
 
 DSPL_ALL_ON MACRO
@@ -148,7 +148,6 @@ INICIO	    ;-----Inicialización de Macros-------
 ;===============================================================================
 ; INICIO PROGRAMA PRINCIPAL
 ;===============================================================================						
-
     CALL   TEST_DSPL
     CFG_DELAY_2ms5
 MAIN_LOOP
@@ -202,42 +201,39 @@ DECF_COUNTER_DSPL
     RETURN
 
 ;*******************************************************************************
-;TABLA DISPLAY CÁTODO COMUN									
-;Segmento	dp	g 	f	e	d	c	b	a	HEX
-;   a	    0	0	0	0	0	0	0	1	0x01
-;   b	    0	0	0	0	0	0	1	0	0x02
-;   c	    0	0	0	0	0	1	0	0	0x04
-;   d	    0	0	0	0	1	0	0	0	0x08
-;   e 	    0 	0	0	1	0	0	0	0	0x10
-;   f	    0	0	1	0	0	0	0	0	0x20
-;   g    	0	1	0	0	0	0	0	0	0x40
-;           
+; @brief    TABLA DISPLAY CÁTODO COMÚN		
 ;
+; @details
+;          RD7|RD6|RD5|RD4|RD3|RD2|RD1|RD0
+;Caractér   dp|	g | f | e | d | c | b | a     HEX
+;  OFF	    0 | 0 | 0 | 0 | 0 | 0 | 0 | 0     00h
+;   0	    0 | 0 | 1 | 1 | 1 | 1 | 1 | 1     3Fh
+;   1	    0 | 0 | 0 | 0 | 0 | 1 | 1 | 0     06h
+;   G	    0 | 1 | 1 | 1 | 1 | 1 | 0 | 1     7Dh
 ;*******************************************************************************
-TABLE_TEST_SEGMENTS 
-ADDWF PCL,F 
-RETLW B'00000001' ;índice 0 -> segmento a 
-RETLW B'00000010' ;índice 1 -> segmento b 
-RETLW B'00000100' ;índice 2 -> segmento c 
-RETLW B'00001000' ;índice 3 -> segmento d 
-RETLW B'00010000' ;índice 4 -> segmento e 
-RETLW B'00100000' ;índice 5 -> segmento f 
-RETLW B'01000000' ;índice 6 -> segmento g 
+TABLE_DECO_DSPL_CC
+    ADDWF    PCL,F
+    RETLW    H'00'
+    RETLW    H'3F'
+    RETLW    H'06'
+    RETLW    H'7D'
 
 ;*******************************************************************************
-;TABLA DE CONTROL			
-;RC0	0	0	1
-;RC1	0	1	0
-;RC2	1	0	0
+; @brief    TABLA DE CONTROL
+;
+; @details
+;          RC7|RC6|RC5|RC4|RC3|RC2|RC1|RC0    HEX
+;           0 | 0 | 0 | 0 | 0 | 0 | 0 | 0     00h
+;           0 | 0 | 0 | 0 | 0 | 1 | 0 | 0     04h
+;           0 | 0 | 0 | 0 | 0 | 0 | 1 | 0     02h
+;           0 | 0 | 0 | 0 | 0 | 0 | 0 | 1     01h
 ;*******************************************************************************
-
-TABLE_CTRL_DSPL_CC 
-ADDWF PCL,F 
-RETLW B'00000000' ;índice 0, no se usa (COUNTER_DSPL nunca vale 0)
-RETLW B'00000001' ;COUNTER_DSPL=1 -> RC0 (display 1) 
-RETLW B'00000010' ;COUNTER_DSPL=2 -> RC1 (display 2) 
-RETLW B'00000100' ;COUNTER_DSPL=3 -> RC2 (display 3) 
-
+TABLE_CTRL_DSPL_CC
+    ADDWF    PCL,F
+    RETLW    H'00'
+    RETLW    H'04'
+    RETLW    H'02'
+    RETLW    H'01'
 
 ;*******************************************************************************
 ; @brief    Subrutina de testeo de los display
@@ -249,25 +245,25 @@ TEST_DSPL
                     CALL   RST_COUNTER_DSPL
 LOOP_TEST_DSPL      MOVF   COUNTER_DSPL,W
                     CALL   TABLE_CTRL_DSPL_CC
-		    MOVWF  PORTC
-		    BCF    STATUS,RP0
-		    BCF    STATUS,RP1
-		    BSF    STATUS,C
-		    DSPL_ALL_OFF
-		    CFG_DELAY_300ms
-		    MOVLW   D'7'
-		    MOVWF  COUNTER_SEGMENTS
+		            MOVWF  PORTC
+		            BCF    STATUS,RP0
+		            BCF    STATUS,RP1
+		            BSF    STATUS,C
+		            DSPL_ALL_OFF
+		            CFG_DELAY_300ms
+		            MOVLW   D'7'
+		            MOVWF  COUNTER_SEGMENTS
 LOOP_TEST_SEGMENT   RLF    PORTD,F
                     CALL   DELAY_3LOOP
-		    DECFSZ COUNTER_SEGMENTS,F
-		    GOTO   LOOP_TEST_SEGMENT
-		    DSPL_ALL_ON
-		    CFG_DELAY_2s
-		    CALL   DELAY_3LOOP
-		    DSPL_ALL_OFF
-		    CALL   DELAY_3LOOP
-		    DECFSZ COUNTER_DSPL,F
-		    GOTO   LOOP_TEST_DSPL
+		            DECFSZ COUNTER_SEGMENTS,F
+		            GOTO   LOOP_TEST_SEGMENT
+		            DSPL_ALL_ON
+		            CFG_DELAY_2s
+		            CALL   DELAY_3LOOP
+		            DSPL_ALL_OFF
+		            CALL   DELAY_3LOOP
+		            DECFSZ COUNTER_DSPL,F
+		            GOTO   LOOP_TEST_DSPL
                     CALL   RST_COUNTER_DSPL
 		    RETURN
 
@@ -341,4 +337,3 @@ MUX_DSPL
 ;===============================================================================
     END
 ;===============================================================================
-
