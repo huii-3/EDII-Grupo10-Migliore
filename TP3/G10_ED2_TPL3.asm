@@ -244,27 +244,27 @@ TABLE_CTRL_DSPL_CC
 TEST_DSPL
                     CALL   RST_COUNTER_DSPL
 LOOP_TEST_DSPL      MOVF   COUNTER_DSPL,W
-                    CALL   TABLE_CTRL_DSPL_CC
-		            MOVWF  PORTC
-		            BCF    STATUS,RP0
+                    CALL   TABLE_CTRL_DSPL_CC ; Utiliza el valor W para determinar el patron
+		            MOVWF  PORTC 			  ;a mostrar en el display
+		            BCF    STATUS,RP0		  ;Banco 0
 		            BCF    STATUS,RP1
-		            BSF    STATUS,C
+		            BSF    STATUS,C			  ;Bit Carry = 1
 		            DSPL_ALL_OFF
 		            CFG_DELAY_300ms
 		            MOVLW   D'7'
-		            MOVWF  COUNTER_SEGMENTS
-LOOP_TEST_SEGMENT   RLF    PORTD,F
+		            MOVWF  COUNTER_SEGMENTS	  ;COUNTER_SEGMENTES = 7 
+LOOP_TEST_SEGMENT   RLF    PORTD,F			  ;Rota los bits de PORTD una posicion a la izq
                     CALL   DELAY_3LOOP
-		            DECFSZ COUNTER_SEGMENTS,F
-		            GOTO   LOOP_TEST_SEGMENT
+		            DECFSZ COUNTER_SEGMENTS,F ;Decrementa COUNTER_SEGMENTES
+		            GOTO   LOOP_TEST_SEGMENT  ;Repite el bucle mientras no sea cero
 		            DSPL_ALL_ON
 		            CFG_DELAY_2s
 		            CALL   DELAY_3LOOP
 		            DSPL_ALL_OFF
 		            CALL   DELAY_3LOOP
-		            DECFSZ COUNTER_DSPL,F
-		            GOTO   LOOP_TEST_DSPL
-                    CALL   RST_COUNTER_DSPL
+		            DECFSZ COUNTER_DSPL,F     ;Decrementa COUNTER_DSPL para cambiar de display
+		            GOTO   LOOP_TEST_DSPL     ;Repite el bucle mientras no sea cero 
+                    CALL   RST_COUNTER_DSPL   
 		    RETURN
 
 ;*******************************************************************************
@@ -274,10 +274,10 @@ LOOP_TEST_SEGMENT   RLF    PORTD,F
 ;*******************************************************************************
 UPDATE_DSPL_1
     MOVF   DATA_DSPL_1,W
-    CALL   TABLE_DECO_DSPL_CC
-    MOVWF  PORTD
+    CALL   TABLE_DECO_DSPL_CC  ;Decodifica el patron para el codigo correspondiente a W
+    MOVWF  PORTD               
     MOVF   COUNTER_DSPL,W
-    CALL   TABLE_CTRL_DSPL_CC
+    CALL   TABLE_CTRL_DSPL_CC  ;Busca en tabla de control para seleccionar el display
     MOVWF  PORTC
     CALL   DECF_COUNTER_DSPL
     RETURN
@@ -289,10 +289,10 @@ UPDATE_DSPL_1
 ;*******************************************************************************
 UPDATE_DSPL_2
     MOVF   DATA_DSPL_2,W
-    CALL   TABLE_DECO_DSPL_CC
+    CALL   TABLE_DECO_DSPL_CC  ;Decodifica el patron para W
     MOVWF  PORTD
     MOVF   COUNTER_DSPL,W
-    CALL   TABLE_CTRL_DSPL_CC
+    CALL   TABLE_CTRL_DSPL_CC  ;Busca en tabla de control el display
     MOVWF  PORTC
     CALL   DECF_COUNTER_DSPL
     RETURN
@@ -304,10 +304,10 @@ UPDATE_DSPL_2
 ;*******************************************************************************
 UPDATE_DSPL_3
     MOVF   DATA_DSPL_3,W
-    CALL   TABLE_DECO_DSPL_CC
+    CALL   TABLE_DECO_DSPL_CC   ;Decodifica el patron para el dato W
     MOVWF  PORTD
     MOVF   COUNTER_DSPL,W
-    CALL   TABLE_CTRL_DSPL_CC
+    CALL   TABLE_CTRL_DSPL_CC   ;Busca en tabla de control el display
     MOVWF  PORTC
     CALL   DECF_COUNTER_DSPL
     RETURN
@@ -320,17 +320,17 @@ UPDATE_DSPL_3
 MUX_DSPL
     CALL   DELAY_3LOOP
     MOVLW  D'3'
-    SUBWF  COUNTER_DSPL,W
-    BTFSC  STATUS,Z
-    GOTO   UPDATE_DSPL_3
+    SUBWF  COUNTER_DSPL,W  
+    BTFSC  STATUS,Z        
+    GOTO   UPDATE_DSPL_3   ;Actualizar display 3
     MOVLW  D'2'	
-    SUBWF  COUNTER_DSPL,W	
-    BTFSC  STATUS,Z
-    GOTO   UPDATE_DSPL_2
+    SUBWF  COUNTER_DSPL,W 
+    BTFSC  STATUS,Z        
+    GOTO   UPDATE_DSPL_2   ;Actualizar display 2
     MOVLW  D'1'
-    SUBWF  COUNTER_DSPL,W
+    SUBWF  COUNTER_DSPL,W  
     BTFSC  STATUS,Z
-    GOTO   UPDATE_DSPL_1
+    GOTO   UPDATE_DSPL_1   ;Actualizar display 1
     CALL   RST_COUNTER_DSPL
     RETURN
 
