@@ -1,0 +1,730 @@
+;===============================================================================
+; @file       G10_ED2_TPI_TRANSMISOR.asm
+;
+; @authors    Gallardo_Lucas Uriel
+;	      Pessolano Dellamea_Ornella Valentina
+;	      Garc�a Navarro_Huilen
+;             Fern�ndez_Mar�a Clara
+;
+; @date       28/09/2026
+;
+; @version    1.0
+;===============================================================================
+
+;===============================================================================
+; DIRECTIVAS DE INCLUSI�N
+;===============================================================================
+    LIST P=16F887			
+    #include "p16f887.inc"
+	
+;===============================================================================
+; CONFIGURACI�N GENERAL DEL MCU
+;=============================================================================== 	
+    __CONFIG _CONFIG1, _XT_OSC & _WDTE_OFF & _MCLRE_ON & _LVP_OFF
+
+;===============================================================================
+; DEFINICI�N DE CONSTANTES
+;===============================================================================
+    ;----------LEDs-----------
+    #DEFINE    LED0     PORTD,RD4
+    #DEFINE    LED1     PORTD,RD5
+    #DEFINE    LED2     PORTD,RD6
+    #DEFINE    LED3     PORTD,RD7
+    #DEFINE    BUZZER   PORTD,RD3
+    #DEFINE    L_ALARM  PORTD,RD2
+    ;------Pines del nRF24L01------
+    #DEFINE    CE_PIN     PORTD,RD0
+    #DEFINE    SCK_PIN    PORTC,RC3
+    #DEFINE    MISO_PIN   PORTC,RC4
+    #DEFINE    MOSI_PIN   PORTC,RC5
+    #DEFINE    IRQ_PIN    PORTB,RB0
+    ;--Flags del nRF24L01--
+    #DEFINE    RX_DR      6
+    #DEFINE    TX_DS      5
+    #DEFINE    MAX_RT     4
+    ;---------------------------Valores de TMR0------------------------------
+    ;Valor constante para el offset del Timer 0 para 20ms con cristal de 4MHz
+    ;TMR0 = 256 - [((t_timerOverflow * fclk) / (4 * PS)) - (2 / PS)]
+    ;TMR0 = 256 - [((20ms * 4MHz) / (4 * 128)) - (2 / 128)] = 99
+    #DEFINE    OFFSET_TMR0_VALUE .99
+    ;Valor constante para el l�mite de desbordes
+    ;N_timerOverflow = t_delay / t_timerOverflow
+    ;N_timerOverflow = 20ms / 20ms = 1
+    #DEFINE    CTR_MAX_TMR0_VALUE .1
+    
+;===============================================================================
+; DEFINICI�N DE VARIABLES
+;===============================================================================
+    CBLOCK 0x20
+        POT1_VALUE
+	POT2_VALUE
+        LIGHTS
+	ENDC
+    CBLOCK 0x40              ;Variables del programa
+        DELAY1_Init
+        DELAY2_Init
+        DELAY3_Init
+        DELAY1
+        DELAY2
+        DELAY3
+	COUNTER_TMR0
+	COUNTER_MAX_TMR0
+        OFFSET_TMR0
+	ADC_CH
+	LM35_VALUE
+	CURRENT_STATE
+	PREVIOUS_STATE
+	FLANKS
+	REG_BCD
+	VAL_CENTENA
+	VAL_DECENA
+	VAL_UNIDAD
+	COUNTER_LM35
+    ENDC
+    CBLOCK    0x70
+        W_TEMP
+        STATUS_TEMP
+        ENDC
+    
+;===============================================================================
+; DECLARACI�N DE MACROS PARA CONFIGURACI�N DE REGISTROS
+;===============================================================================
+    
+CFG_LEDS MACRO
+    BANKSEL TRISD
+    BCF     TRISD,TRISD7
+    BCF     TRISD,TRISD6
+    BCF     TRISD,TRISD5
+    BCF     TRISD,TRISD4
+    BCF     TRISD,TRISD3
+    BCF     TRISD,TRISD2
+    BANKSEL PORTD
+    BCF     LED0
+    BCF     LED1
+    BCF     LED2
+    BCF     LED3
+    BCF     L_ALARM
+    BCF     BUZZER
+    ENDM
+    
+CFG_BUTTONS MACRO
+    BANKSEL TRISB                 ;Pines del teclado
+    BSF     TRISB,TRISB4          ;RB4 entrada digital
+    BSF     TRISB,TRISB5          ;RB5 entrada digital
+    BSF     TRISB,TRISB6          ;RB6 entrada digital
+    BSF     TRISB,TRISB7          ;RB7 entrada digital
+    BANKSEL ANSELH
+    BCF     ANSELH,ANS11          ;Pin anal�gico AN11 desactivado
+    BCF     ANSELH,ANS13          ;Pin anal�gico AN13 desactivado
+    BANKSEL OPTION_REG
+    BCF     OPTION_REG,NOT_RBPU   ;Resistencias pull-up internas habilitadas
+    BANKSEL WPUB
+    BSF     WPUB,WPUB4
+    BSF     WPUB,WPUB5            ;Resistencias pull-up internas activas
+    BSF     WPUB,WPUB6            ;para RB4,RB5,RB6 Y RB7
+    BSF     WPUB,WPUB7
+    BANKSEL IOCB
+    BSF     IOCB,IOCB4
+    BSF     IOCB,IOCB5            ;Activo interrupciones por cambio de nivel
+    BSF     IOCB,IOCB6            ;en los pines RB4,RB5,RB6 y RB7
+    BSF     IOCB,IOCB7
+    BANKSEL LIGHTS
+    CLRF    LIGHTS                ;Todas las luces apagadas
+    BANKSEL PORTB
+    MOVF    PORTB,W
+    BANKSEL PREVIOUS_STATE
+    MOVWF   PREVIOUS_STATE        ;Guardo el valor de inicializacion de PORTB
+    CLRF    FLANKS
+    CLRF    LIGHTS
+    ENDM
+    
+CFG_CHS_SENSORS MACRO
+    BANKSEL    ANSEL
+    BSF        ANSEL,ANS0
+    BSF        ANSEL,ANS1         ;RA0, RA1 y RA2 GPIOs Anal�gicos
+    BSF        ANSEL,ANS2
+    BANKSEL    TRISA
+    BSF        TRISA,TRISA0       ;RA0: Entrada anal�gica (LM35)
+    BSF        TRISA,TRISA1       ;RA1: Entrada anal�gica (Pote X)
+    BSF        TRISA,TRISA2       ;RA2: Entrada anal�gica (Pote Y)
+    ENDM
+    
+CFG_ADC MACRO
+    BANKSEL    ADCON1
+    BCF        ADCON1,ADFM        ;Conversi�n justificada a la izquierda
+    BCF        ADCON1,VCFG1       ;Referencia negativa = VSS
+    BCF        ADCON1,VCFG0       ;Referencia positiva = VCC
+    BANKSEL    ADCON0
+    BCF        ADCON0,ADCS1       ;Seteo la frecuencia del ADC en FOSC/8
+    BSF        ADCON0,ADCS0
+    BCF        ADCON0,CHS3        ;Inicialmente selecciono canal AN1
+    BCF        ADCON0,CHS2
+    BSF        ADCON0,CHS1
+    BCF        ADCON0,CHS0
+    BSF        ADCON0,ADON        ;ADC encendido
+    ENDM
+    
+CFG_TMR0 MACRO
+    BANKSEL    OPTION_REG
+    BCF        OPTION_REG,T0CS    ;Clock del TMR0 = FOSC/4
+    BCF        OPTION_REG,PSA     ;Prescaler asignado al TMR0
+    BSF        OPTION_REG,PS2
+    BSF        OPTION_REG,PS1     ;Prescaler = 1:1
+    BSF        OPTION_REG,PS0
+    BANKSEL    TMR0
+    MOVLW      OFFSET_TMR0_VALUE
+    MOVWF      OFFSET_TMR0
+    MOVWF      TMR0
+    MOVLW      CTR_MAX_TMR0_VALUE
+    MOVWF      COUNTER_MAX_TMR0
+    CLRF       COUNTER_TMR0
+    ENDM
+	
+CFG_SPI MACRO
+    BANKSEL TRISC
+    BCF     TRISC,TRISC3          ;RC3 salida digital(SCK)
+    BSF     TRISC,TRISC4          ;RC4 entrada digital(SDI)
+    BCF     TRISC,TRISC5          ;RC5 salida digital(SDO)
+    BANKSEL TRISD
+    BCF     TRISD,TRISD1          ;RD1 salida digital(CSN)
+    BCF     TRISD,TRISD0          ;RD0 salida digital(CE)
+    BANKSEL PORTD
+    BSF     PORTD,RD1             ;CSN arranca en 1 (l�gica negativa)
+    BCF     CE_PIN                ;CE arranca en 0 (l�gica positiva)
+    BANKSEL SSPSTAT
+    BCF     SSPSTAT,SMP           ;Muestras a la mitad del tiempo de salida
+    BSF     SSPSTAT,CKE           ;Datos transmitidos en flanco ascendente
+    BANKSEL SSPCON
+    BCF     SSPCON,CKP            ;Estado inactivo del clk en bajo
+    BCF     SSPCON,SSPM3
+    BCF     SSPCON,SSPM2          ;CLK de SPI = Fosc/4
+    BCF     SSPCON,SSPM1
+    BCF     SSPCON,SSPM0
+    BSF     SSPCON,SSPEN          ;Habilita el puerto serie una vez
+    ENDM                          ;configuradas todas las opciones
+    
+CFG_ISR MACRO
+    BANKSEL TRISB
+    BSF     TRISB,TRISB0
+    BANKSEL ANSELH
+    BCF     ANSELH,ANS12
+    BANKSEL OPTION_REG
+    BCF     OPTION_REG,NOT_RBPU   ;Resistencias pull-up internas habilitadas
+    BCF     OPTION_REG,INTEDG     ;Interrupci�n RB0 por flanco descendente
+    BANKSEL PIR1
+    BCF     PIR1,ADIF             ;Bajo la bandera de Interrupci�n por ADC
+    BANKSEL PIE1
+    BSF     PIE1,ADIE             ;Habilita Interrupci�n por ADC
+    BANKSEL INTCON
+    BCF     INTCON,INTF           ;Limpio la flag de interrupi�n por flanco
+    BSF     INTCON,INTE           ;Habilito la interrupci�n por flanco
+    BCF     INTCON,T0IF           ;Baja la bandera de Interrupci�n por Timer0
+    BSF     INTCON,T0IE           ;Habilita Interrupci�n por Timer0
+    BSF     INTCON,PEIE           ;Habilita Interrupciones Perif�ricas
+    BSF     INTCON,GIE            ;Habilito las interrupciones
+    ENDM
+    
+CFG_IOC MACRO
+    BANKSEL INTCON
+    BCF     INTCON,RBIF           ;Limpio la flag de interrupci�n por IOC
+    BSF     INTCON,RBIE           ;Habilita Interrupciones por IOC
+    ENDM
+    
+CFG_UART_TX MACRO
+    BANKSEL TRISC
+    BCF     TRISC,TRISC6
+    BANKSEL SPBRG
+    MOVLW   d'12'               ;Baudrate = 19200
+    MOVWF   SPBRG
+    BANKSEL TXSTA
+    BCF     TXSTA,SYNC
+    BSF     TXSTA,BRGH
+    BSF     TXSTA,TXEN
+    BANKSEL RCSTA
+    BSF     RCSTA,SPEN
+    BANKSEL COUNTER_LM35
+    CLRF    COUNTER_LM35
+    ENDM
+    
+CFG_DELAY_20us MACRO
+    MOVLW   D'1'
+    MOVWF   DELAY1_Init
+    MOVLW   D'1'
+    MOVWF   DELAY2_Init
+    MOVLW   D'2'
+    MOVWF   DELAY3_Init
+    ENDM
+    
+CFG_DELAY_1ms5 MACRO
+    MOVLW   D'13'
+    MOVWF   DELAY1_Init
+    MOVLW   D'3'
+    MOVWF   DELAY2_Init
+    MOVLW   D'11'
+    MOVWF   DELAY3_Init
+    ENDM
+    
+CLR_PAYLOAD MACRO
+    CLRF    0X20
+    CLRF    0X21
+    CLRF    0X22
+    ENDM
+    
+;===============================================================================
+; INICIALIZACI�N DEL MCU (C�DIGO ABSOLUTO)
+;===============================================================================
+    ORG     0x00	    ;Vector de Reset
+    GOTO    INICIO	    ;Salto al inicio del programa principal
+    ORG     0x04	    ;Vector de Interrupci�n
+    GOTO    ISR_INICIO	    ;Salto al Rutina de Servicio de Interrupci�n
+    ORG     0x05	    ;Ubicaci�n Programa Principal en la memoria 
+			    ;de programa
+		
+;===============================================================================
+; INICIALIZACI�N DE MACROS PARA CONFIGURACI�N DE REGISTROS
+;===============================================================================    	    
+INICIO	    ;-----Inicializaci�n de Macros-------
+            CFG_LEDS
+	    CFG_BUTTONS
+	    CFG_CHS_SENSORS
+	    CFG_ADC
+	    CFG_UART_TX
+	    CFG_TMR0
+	    CFG_SPI
+	    CFG_ISR
+	    CALL NRF_INIT_TX
+	    CFG_IOC
+	    CLR_PAYLOAD
+		
+;===============================================================================
+; INICIO PROGRAMA PRINCIPAL
+;===============================================================================						
+MAIN_LOOP
+    ;...
+    GOTO    MAIN_LOOP	
+
+;===============================================================================
+; INICIALIZACI�N DE RUTINAS DE SERVICIO DE INTERRUPCI�N
+;===============================================================================		    
+ISR_INICIO		
+    ;--------Guardado de Contexto--------
+    MOVWF      W_TEMP
+    SWAPF      STATUS,W
+    MOVWF      STATUS_TEMP
+    ;------------------------------------
+    ;---Identificaci�n de Interrupci�n---
+    BANKSEL    INTCON
+    BTFSC      INTCON,INTF
+    GOTO       ISR_INT
+    BTFSC      INTCON,T0IF
+    GOTO       ISR_TMR0
+    BTFSC      INTCON,RBIF
+    GOTO       ISR_IOC
+    BANKSEL    PIR1
+    BTFSC      PIR1,ADIF
+    GOTO       ISR_ADC
+    GOTO       ISR_FIN
+    ;------------------------------------	
+		
+;===============================================================================
+; FINALIZACI�N DE RUTINAS DE SERVICIO DE INTERRUPCI�N
+;===============================================================================		    
+ISR_FIN			    
+    ;--------Restauraci�n de Contexto--------
+    SWAPF      STATUS_TEMP,W
+    MOVWF      STATUS
+    SWAPF      W_TEMP,F
+    SWAPF      W_TEMP,W
+    RETFIE
+    ;----------------------------------------
+	
+;===============================================================================
+; SUBRUTINAS
+;===============================================================================
+    
+    #include <NRF24L01.inc>
+    
+;*******************************************************************************
+; @brief    Retardo por Software
+;           
+; @details  Implementa 3 bucles anidados
+;           t_DELAY = (4/f_clk)*[(3*p*n*m)+(4*n*m)+(4*m)+5]
+;******************************************************************************* 
+DELAY_3LOOP
+        MOVFW   DELAY1_Init   ;m
+        MOVWF   DELAY1
+    LOOP1
+        MOVFW   DELAY2_Init   ;n
+        MOVWF   DELAY2
+    LOOP2
+        MOVFW   DELAY3_Init   ;p
+        MOVWF   DELAY3
+    LOOP3
+        DECFSZ  DELAY3,F
+        GOTO    LOOP3
+        DECFSZ  DELAY2,F
+        GOTO    LOOP2
+        DECFSZ  DELAY1,F
+        GOTO    LOOP1
+        RETURN
+    
+    
+;*******************************************************************************
+; @brief    Subrutina de servicio de interrupci�n por flanco en RB0
+;*******************************************************************************
+ISR_INT
+        CALL    NRF_READ_STATUS
+	BTFSC   NRF_DATA,RX_DR
+	GOTO    SAVE_RX
+	BTFSC   NRF_DATA,TX_DS
+	GOTO    TX_END
+	BTFSC   NRF_DATA,MAX_RT
+	NOP
+	GOTO    CLR_NRF_FLAGS
+	
+    SAVE_RX
+        MOVLW   .3
+	MOVWF   NRF_LENGTH
+        CALL    R_RX_PAYLOAD
+	GOTO    CLR_NRF_FLAGS
+    
+    TX_END
+        BANKSEL PORTD
+	BTFSS   LIGHTS,3
+	BCF     LED3
+	BTFSC   LIGHTS,3
+	BSF     LED3
+	BTFSS   LIGHTS,2
+	BCF     LED2
+	BTFSC   LIGHTS,2
+	BSF     LED2
+	BTFSS   LIGHTS,1
+	BCF     LED1
+	BTFSC   LIGHTS,1
+	BSF     LED1
+	BTFSS   LIGHTS,0
+	BCF     LED0
+	BTFSC   LIGHTS,0
+	BSF     LED0
+	GOTO    CHECK_TX_UART
+	
+    CHECK_TX_UART
+        BANKSEL COUNTER_LM35
+	MOVF    COUNTER_LM35,W
+	SUBLW   .50
+	BTFSS   STATUS,Z
+	GOTO    CLR_NRF_FLAGS
+	GOTO    START_TX_UART
+	
+    START_TX_UART
+        BANKSEL LM35_VALUE
+        MOVF    LM35_VALUE,W
+	MOVWF   REG_BCD
+	CALL    CNV_BCD
+	
+	MOVF    VAL_CENTENA,W
+	ADDLW   d'48'
+	CALL    UART_TX_BYTE
+	
+	MOVF    VAL_DECENA,W
+	ADDLW   d'48'
+	CALL    UART_TX_BYTE
+	
+	MOVF    VAL_UNIDAD,W
+	ADDLW   d'48'
+	CALL    UART_TX_BYTE
+	
+	MOVLW   d'10'               ;Salto de linea LF (\n)
+	CALL    UART_TX_BYTE
+	MOVLW   d'13'               ;Retorno de carro CR (\r)
+	CALL    UART_TX_BYTE
+	GOTO    CLR_NRF_FLAGS
+	
+    CLR_NRF_FLAGS
+        MOVLW   0x70
+	MOVWF   NRF_DATA
+	CALL    NRF_WRITE_STATUS
+	BANKSEL INTCON
+	BCF     INTCON,INTF
+	GOTO    ISR_FIN
+	
+	
+;*******************************************************************************
+; @brief    Subrutina de servicio de interrupci�n por cambio de nivel en el
+;           puerto B
+;*******************************************************************************
+ISR_IOC
+	BANKSEL PORTB
+	MOVF    PORTB,W
+	BANKSEL CURRENT_STATE    ;Leo el estado actual del puerto B y lo guardo
+	MOVWF   CURRENT_STATE    ;Complemento el estado actual para dejar en 1
+	COMF    CURRENT_STATE,W  ;solo el boton que se apret�
+	ANDWF   PREVIOUS_STATE,W ;Comparo el estado actual con el anterior
+	ANDLW   0xF0             ;Enmascaro el nibble alto que es el importa
+	MOVWF   FLANKS           ;ya que all� est�n los botones y lo guardo
+	
+	MOVF    CURRENT_STATE,W  ;Actualizo el estado previo para la
+	MOVWF   PREVIOUS_STATE   ;siguiente interrupci�n
+	
+	SWAPF   FLANKS,W         ;Doy vuelta los nibbles para el alto de FLANKS
+	XORWF   LIGHTS,F         ;con el bajo de LIGHTS y actualizo el valor
+	                         ;de LIGHTS
+	BANKSEL INTCON
+	BCF     INTCON,RBIF      ;Limpio la bandera de IOC
+	GOTO    ISR_FIN
+
+	
+;*******************************************************************************
+; @brief    Subrutina de servicio de interrupci�n para el Timer0
+;*******************************************************************************
+ISR_TMR0
+        INCF    COUNTER_TMR0
+        MOVFW   COUNTER_MAX_TMR0
+        SUBWF   COUNTER_TMR0,W
+        BTFSS   STATUS,Z
+        GOTO    RELOAD_TMR0
+	CLRF    COUNTER_TMR0
+	GOTO    START_CONVERSION
+	
+    START_CONVERSION
+        BANKSEL COUNTER_LM35     ;COUNTER_LM35 = 50 --> Enviar datos por UART
+	INCF    COUNTER_LM35,F
+        BANKSEL INTCON           ;Deshabilito las interrupciones por IOC para
+	BCF     INTCON,RBIE      ;que no interrumpan durante la secuencia de 
+	BANKSEL ADCON1           ;3 conversiones.
+	BSF     ADCON1,VCFG0     ;Para la primera conversi�n (LM35) seteo la
+	BANKSEL ADCON0           ;referencia de tensi�n del pin Vref+
+	BSF     ADCON0,GO
+	GOTO    RELOAD_TMR0
+	
+    RELOAD_TMR0
+        MOVFW   OFFSET_TMR0
+	MOVWF   TMR0
+	GOTO    CLR_FLAG_TMR0
+	
+    CLR_FLAG_TMR0
+        BANKSEL INTCON
+	BCF     INTCON,T0IF
+	GOTO    ISR_FIN
+
+
+;*******************************************************************************
+; @brief    Subrutina de servicio de interrupci�n para el ADC
+;*******************************************************************************
+ISR_ADC
+	BANKSEL ADCON0
+	MOVF    ADCON0,W
+	ANDLW   b'00111100'      ;Enmascaro el registro ADCON0 para
+	MOVWF   ADC_CH           ;conservar solo los bits del canal
+	BCF     STATUS,C
+	RRF     ADC_CH,F         ;Muevo los bits a la derecha dos posiciones
+        RRF     ADC_CH,F         ;para manejar los bits del canal en decimal
+	MOVF    ADC_CH,W         ;Pregunto si la conversi�n fue del canal 0
+	SUBLW   .0
+	BTFSC   STATUS,Z
+	GOTO    READ_AN0
+	MOVF    ADC_CH,W         ;Pregunto si la conversi�n fue del canal 1
+	SUBLW   .1
+	BTFSC   STATUS,Z
+	GOTO    READ_AN1
+	MOVF    ADC_CH,W         ;Pregunto si la conversi�n fue del canal 2
+	SUBLW   .2
+	BTFSC   STATUS,Z
+	GOTO    READ_AN2
+	GOTO    CLR_FLAG_ADC
+	
+    READ_AN0
+        BANKSEL ADRESH
+	MOVF    ADRESH,W
+	BANKSEL LM35_VALUE
+	MOVWF   LM35_VALUE       ;Guardo el valor le�do del LM35
+	BANKSEL ADCON1           ;Para la segunda y tercera conversi�n seteo la
+	BCF     ADCON1,VCFG0     ;referencia de tensi;on interna (VCC)
+	BANKSEL ADCON0
+	BCF     ADCON0,CHS3
+	BCF     ADCON0,CHS2      ;Seteo el canal 1 para la proxima conversi�n
+	BCF     ADCON0,CHS1
+	BSF     ADCON0,CHS0
+	BSF     ADCON0,GO        ;Inicio la pr�xima conversi�n
+	GOTO    CLR_FLAG_ADC
+	
+    READ_AN1
+        BANKSEL ADRESH
+	MOVF    ADRESH,W
+	BANKSEL POT1_VALUE
+	MOVWF   POT1_VALUE       ;Guardo el valor le�do del primer pote
+	BANKSEL ADCON0
+	BCF     ADCON0,CHS3
+	BCF     ADCON0,CHS2      ;Seteo el canal 2 para la proxima conversi�n
+	BSF     ADCON0,CHS1
+	BCF     ADCON0,CHS0
+	BSF     ADCON0,GO        ;Inicio la pr�xima conversi�n
+	GOTO    CLR_FLAG_ADC
+	
+    READ_AN2
+        BANKSEL ADRESH
+	MOVF    ADRESH,W
+	BANKSEL POT2_VALUE
+	MOVWF   POT2_VALUE       ;Guardo el valor le�do del segundo pote
+	BANKSEL ADCON0
+	BCF     ADCON0,CHS3
+	BCF     ADCON0,CHS2      ;Seteo el canal 0 para la proxima conversi�n
+	BCF     ADCON0,CHS1
+	BCF     ADCON0,CHS0      ;Esta vez no inicio otra conversi�n ya que esto
+	GOTO    CHECK_TEMP       ;lo har� la interrupci�n del TMR0 y lo que hago
+	                         ;es enviar las conversiones
+				 
+    CHECK_TEMP
+        MOVLW   .51
+	BANKSEL LM35_VALUE
+	SUBWF   LM35_VALUE,W
+	BTFSC   STATUS,C
+	GOTO    ALARM_ON
+	GOTO    ALARM_OFF
+	
+    ALARM_ON
+        BANKSEL PORTD
+	BSF     L_ALARM
+	BSF     BUZZER
+	GOTO    SEND_DATA
+	
+    ALARM_OFF
+        BANKSEL PORTD
+	BCF     L_ALARM
+	BCF     BUZZER
+	GOTO    SEND_DATA
+        
+    SEND_DATA
+        BCF     STATUS,RP0
+	BCF     STATUS,RP1
+	CALL    FLUSH_TX
+	MOVLW   .3
+	MOVWF   NRF_LENGTH
+	CALL    W_TX_PAYLOAD
+	BANKSEL PORTD
+	CFG_DELAY_20us
+	BSF     CE_PIN
+	CALL    DELAY_3LOOP
+	BCF     CE_PIN
+	BANKSEL INTCON
+	BSF     INTCON,RBIE
+	GOTO    CLR_FLAG_ADC
+	
+    CLR_FLAG_ADC
+        BANKSEL PIR1
+	BCF     PIR1,ADIF
+	GOTO    ISR_FIN
+	
+	
+;*******************************************************************************
+; @brief    Subrutina de configuraci�n inicial del nRF24L01+ para transmisor
+;*******************************************************************************
+NRF_INIT_TX
+	MOVLW   0x0A
+	MOVWF   NRF_DATA
+	CALL    NRF_WRITE_CONFIG
+	CFG_DELAY_1ms5
+	CALL    DELAY_3LOOP
+	MOVLW   0x00
+	MOVWF   NRF_DATA
+	CALL    NRF_WRITE_EN_AA
+	MOVLW   0x00
+	MOVWF   NRF_DATA
+	CALL    NRF_WRITE_EN_RXADDR
+	MOVLW   0x03
+	MOVWF   NRF_DATA
+	CALL    NRF_WRITE_SETUP_AW
+	MOVLW   0x00
+	MOVWF   NRF_DATA
+	CALL    NRF_WRITE_SETUP_RETR
+	MOVLW   .76
+	MOVWF   NRF_DATA
+	CALL    NRF_WRITE_RF_CH
+	MOVLW   0x26
+	MOVWF   NRF_DATA
+	CALL    NRF_WRITE_RF_SETUP
+	MOVLW   0x70
+	MOVWF   NRF_DATA
+	CALL    NRF_WRITE_STATUS
+	MOVLW   0x4C
+	MOVWF   0x20
+	MOVLW   0x45
+	MOVWF   0x21
+	MOVLW   0x49
+	MOVWF   0x22
+	MOVLW   0x52
+	MOVWF   0x23
+	MOVLW   0x55
+	MOVWF   0x24
+	CALL    NRF_WRITE_TX_ADDR
+	MOVLW   .3
+	MOVWF   NRF_DATA
+	CALL    NRF_WRITE_RX_PW_P0
+	MOVLW   0x00
+	MOVWF   NRF_DATA
+	CALL    NRF_WRITE_DYNPD
+	MOVLW   0x00
+	MOVWF   NRF_DATA
+	CALL    NRF_WRITE_FEATURE
+	RETURN
+	
+	
+;*******************************************************************************
+; @brief    Conversi�n de binario natural (8-bits) a BCD desempaquetado.
+;
+; @details  - Descompone un valor binario crudo [0-255] almacenado en REG_BCD 
+;             en sus componentes posicionales de Centenas, Decenas y Unidades 
+;             mediante el m�todo de restas sucesivas. 
+;	    - Los resultados se guardan en las variables UNIDAD, DECENA, CENTENA    
+;*******************************************************************************    
+CNV_BCD
+        CLRF    VAL_UNIDAD 	   
+        CLRF    VAL_DECENA
+        CLRF    VAL_CENTENA
+    TEST_CEN
+	MOVLW   .100                
+	SUBWF   REG_BCD,W   
+	BTFSC   STATUS,C    
+	GOTO    ADD_CEN     
+	GOTO    TEST_DEC    
+    TEST_DEC
+	MOVLW   .10                                             
+	SUBWF   REG_BCD,W   
+	BTFSC   STATUS,C    
+	GOTO    ADD_DEC    
+	GOTO    TEST_UNI    
+    TEST_UNI
+	GOTO    ADD_UNI    
+    ADD_CEN
+	MOVWF   REG_BCD     
+	INCF    VAL_CENTENA,F   
+	GOTO    TEST_CEN                            
+    ADD_DEC
+	MOVWF   REG_BCD     
+	INCF    VAL_DECENA,F   
+	GOTO    TEST_DEC    
+    ADD_UNI
+	MOVF    REG_BCD,W   
+	MOVWF   VAL_UNIDAD     
+	RETURN
+	
+	
+;*******************************************************************************
+; @brief    Trasmisi�n de un byte de datos a trav�s del m�dulo EUSART
+;
+; @details  Realiza polling sobre el bit TRMT de TXSTA para verficar que el
+;           registro de desplazamiento se encuente vac�o
+;*******************************************************************************
+UART_TX_BYTE
+	BANKSEL TXSTA
+    LOOP_TX
+        BTFSS   TXSTA,TRMT
+	GOTO    LOOP_TX
+	BANKSEL TXREG
+	MOVWF   TXREG
+	RETURN
+	
+	
+;===============================================================================		
+    END
+;===============================================================================
